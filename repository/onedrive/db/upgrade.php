@@ -28,5 +28,17 @@ function xmldb_repository_onedrive_upgrade($oldversion) {
 
     $dbman = $DB->get_manager();
 
+    // Automatically generated Moodle v3.3.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Automatically generated Moodle v3.4.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Automatically generated Moodle v3.5.0 release upgrade line.
+    // Put any upgrade step following this.
+
+    // Automatically generated Moodle v3.6.0 release upgrade line.
+    // Put any upgrade step following this.
+
     return true;
 }

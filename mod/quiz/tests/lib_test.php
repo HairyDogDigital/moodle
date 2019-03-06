@@ -505,14 +505,16 @@ class mod_quiz_lib_testcase extends advanced_testcase {
 
         // Create a course.
         $course = $this->getDataGenerator()->create_course();
-
+        // Create a teacher and enrol into the course.
+        $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
         // Create a quiz.
         $quiz = $this->getDataGenerator()->create_module('quiz', array('course' => $course->id,
             'timeopen' => time() - DAYSECS, 'timeclose' => time() + DAYSECS));
 
         // Create a calendar event.
         $event = $this->create_action_event($course->id, $quiz->id, QUIZ_EVENT_TYPE_OPEN);
-
+        // Now, log in as teacher.
+        $this->setUser($student);
         // Create an action factory.
         $factory = new \core_calendar\action_factory();
 
@@ -556,14 +558,16 @@ class mod_quiz_lib_testcase extends advanced_testcase {
 
         // Create a course.
         $course = $this->getDataGenerator()->create_course();
-
+        // Create a teacher and enrol into the course.
+        $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
         // Create a quiz.
         $quiz = $this->getDataGenerator()->create_module('quiz', array('course' => $course->id,
             'timeopen' => time() + DAYSECS));
 
         // Create a calendar event.
         $event = $this->create_action_event($course->id, $quiz->id, QUIZ_EVENT_TYPE_CLOSE);
-
+        // Now, log in as teacher.
+        $this->setUser($student);
         // Create an action factory.
         $factory = new \core_calendar\action_factory();
 
@@ -735,5 +739,28 @@ class mod_quiz_lib_testcase extends advanced_testcase {
         $this->assertEquals(mod_quiz_get_completion_active_rule_descriptions($cm2), []);
         $this->assertEquals(mod_quiz_get_completion_active_rule_descriptions($moddefaults), $activeruledescriptions);
         $this->assertEquals(mod_quiz_get_completion_active_rule_descriptions(new stdClass()), []);
+    }
+
+    /**
+     * A user who does not have capabilities to add events to the calendar should be able to create a quiz.
+     */
+    public function test_creation_with_no_calendar_capabilities() {
+        $this->resetAfterTest();
+        $course = self::getDataGenerator()->create_course();
+        $context = context_course::instance($course->id);
+        $user = self::getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $roleid = self::getDataGenerator()->create_role();
+        self::getDataGenerator()->role_assign($roleid, $user->id, $context->id);
+        assign_capability('moodle/calendar:manageentries', CAP_PROHIBIT, $roleid, $context, true);
+        $generator = self::getDataGenerator()->get_plugin_generator('mod_quiz');
+        // Create an instance as a user without the calendar capabilities.
+        $this->setUser($user);
+        $time = time();
+        $params = array(
+            'course' => $course->id,
+            'timeopen' => $time + 200,
+            'timeclose' => $time + 2000,
+        );
+        $generator->create_instance($params);
     }
 }

@@ -50,7 +50,7 @@ abstract class moodleform_mod extends moodleform {
      */
     protected $_customcompletionelements;
     /**
-     * @var string name of module
+     * @var string name of module.
      */
     protected $_modname;
     /** current context, course or module depends if already exists*/
@@ -86,13 +86,15 @@ abstract class moodleform_mod extends moodleform {
         require_once($CFG->dirroot . '/course/format/lib.php');
         $this->courseformat = course_get_format($course);
 
-        // Guess module name
-        $matches = array();
-        if (!preg_match('/^mod_([^_]+)_mod_form$/', get_class($this), $matches)) {
-            debugging('Use $modname parameter or rename form to mod_xx_mod_form, where xx is name of your module');
-            print_error('unknownmodulename');
+        // Guess module name if not set.
+        if (is_null($this->_modname)) {
+            $matches = array();
+            if (!preg_match('/^mod_([^_]+)_mod_form$/', get_class($this), $matches)) {
+                debugging('Rename form to mod_xx_mod_form, where xx is name of your module');
+                print_error('unknownmodulename');
+            }
+            $this->_modname = $matches[1];
         }
-        $this->_modname = $matches[1];
         $this->init_features();
         parent::__construct('modedit.php');
     }
@@ -168,7 +170,7 @@ abstract class moodleform_mod extends moodleform {
         global $CFG;
 
         $this->_features = new stdClass();
-        $this->_features->groups            = plugin_supports('mod', $this->_modname, FEATURE_GROUPS, true);
+        $this->_features->groups            = plugin_supports('mod', $this->_modname, FEATURE_GROUPS, false);
         $this->_features->groupings         = plugin_supports('mod', $this->_modname, FEATURE_GROUPINGS, false);
         $this->_features->outcomes          = (!empty($CFG->enableoutcomes) and plugin_supports('mod', $this->_modname, FEATURE_GRADE_OUTCOMES, true));
         $this->_features->hasgrades         = plugin_supports('mod', $this->_modname, FEATURE_GRADE_HAS_GRADE, false);
@@ -281,12 +283,16 @@ abstract class moodleform_mod extends moodleform {
         // option (MDL-30764)
         if (empty($this->_cm) || !$this->_cm->groupingid) {
             if ($mform->elementExists('groupmode') && empty($COURSE->groupmodeforce)) {
-                $mform->disabledIf('groupingid', 'groupmode', 'eq', NOGROUPS);
+                $mform->hideIf('groupingid', 'groupmode', 'eq', NOGROUPS);
 
             } else if (!$mform->elementExists('groupmode')) {
                 // Groupings have no use without groupmode.
                 if ($mform->elementExists('groupingid')) {
                     $mform->removeElement('groupingid');
+                }
+                // Nor does the group restrictions button.
+                if ($mform->elementExists('restrictgroupbutton')) {
+                    $mform->removeElement('restrictgroupbutton');
                 }
             }
         }
@@ -408,7 +414,7 @@ abstract class moodleform_mod extends moodleform {
             } else {
                 $grade = $scale;
             }
-            if ($data['gradepass'] > $grade) {
+            if (unformat_float($data['gradepass']) > $grade) {
                 $errors['gradepass'] = get_string('gradepassgreaterthangrade', 'grades', $grade);
             }
         }
@@ -539,19 +545,19 @@ abstract class moodleform_mod extends moodleform {
                 }
             }
             $mform->addElement('modgrade', 'scale', get_string('scale'), $gradeoptions);
-            $mform->disabledIf('scale', 'assessed', 'eq', 0);
+            $mform->hideIf('scale', 'assessed', 'eq', 0);
             $mform->addHelpButton('scale', 'modgrade', 'grades');
             $mform->setDefault('scale', $CFG->gradepointdefault);
 
             $mform->addElement('checkbox', 'ratingtime', get_string('ratingtime', 'rating'));
-            $mform->disabledIf('ratingtime', 'assessed', 'eq', 0);
+            $mform->hideIf('ratingtime', 'assessed', 'eq', 0);
 
             $mform->addElement('date_time_selector', 'assesstimestart', get_string('from'));
-            $mform->disabledIf('assesstimestart', 'assessed', 'eq', 0);
+            $mform->hideIf('assesstimestart', 'assessed', 'eq', 0);
             $mform->disabledIf('assesstimestart', 'ratingtime');
 
             $mform->addElement('date_time_selector', 'assesstimefinish', get_string('to'));
-            $mform->disabledIf('assesstimefinish', 'assessed', 'eq', 0);
+            $mform->hideIf('assesstimefinish', 'assessed', 'eq', 0);
             $mform->disabledIf('assesstimefinish', 'ratingtime');
         }
 
@@ -671,7 +677,7 @@ abstract class moodleform_mod extends moodleform {
             if (plugin_supports('mod', $this->_modname, FEATURE_COMPLETION_TRACKS_VIEWS, false)) {
                 $mform->addElement('checkbox', 'completionview', get_string('completionview', 'completion'),
                     get_string('completionview_desc', 'completion'));
-                $mform->disabledIf('completionview', 'completion', 'ne', COMPLETION_TRACKING_AUTOMATIC);
+                $mform->hideIf('completionview', 'completion', 'ne', COMPLETION_TRACKING_AUTOMATIC);
                 // Check by default if automatic completion tracking is set.
                 if ($trackingdefault == COMPLETION_TRACKING_AUTOMATIC) {
                     $mform->setDefault('completionview', 1);
@@ -683,7 +689,7 @@ abstract class moodleform_mod extends moodleform {
             if (plugin_supports('mod', $this->_modname, FEATURE_GRADE_HAS_GRADE, false)) {
                 $mform->addElement('checkbox', 'completionusegrade', get_string('completionusegrade', 'completion'),
                     get_string('completionusegrade_desc', 'completion'));
-                $mform->disabledIf('completionusegrade', 'completion', 'ne', COMPLETION_TRACKING_AUTOMATIC);
+                $mform->hideIf('completionusegrade', 'completion', 'ne', COMPLETION_TRACKING_AUTOMATIC);
                 $mform->addHelpButton('completionusegrade', 'completionusegrade', 'completion');
                 $gotcompletionoptions = true;
 
@@ -696,7 +702,7 @@ abstract class moodleform_mod extends moodleform {
             // Automatic completion according to module-specific rules
             $this->_customcompletionelements = $this->add_completion_rules();
             foreach ($this->_customcompletionelements as $element) {
-                $mform->disabledIf($element, 'completion', 'ne', COMPLETION_TRACKING_AUTOMATIC);
+                $mform->hideIf($element, 'completion', 'ne', COMPLETION_TRACKING_AUTOMATIC);
             }
 
             $gotcompletionoptions = $gotcompletionoptions ||
@@ -710,9 +716,10 @@ abstract class moodleform_mod extends moodleform {
             }
 
             // Completion expected at particular date? (For progress tracking)
-            $mform->addElement('date_selector', 'completionexpected', get_string('completionexpected', 'completion'), array('optional'=>true));
+            $mform->addElement('date_time_selector', 'completionexpected', get_string('completionexpected', 'completion'),
+                    array('optional' => true));
             $mform->addHelpButton('completionexpected', 'completionexpected', 'completion');
-            $mform->disabledIf('completionexpected', 'completion', 'eq', COMPLETION_TRACKING_NONE);
+            $mform->hideIf('completionexpected', 'completion', 'eq', COMPLETION_TRACKING_NONE);
         }
 
         // Populate module tags.
@@ -852,7 +859,7 @@ abstract class moodleform_mod extends moodleform {
                         get_string('gradingmethod', 'core_grading'), $this->current->_advancedgradingdata['methods']);
                     $mform->addHelpButton('advancedgradingmethod_'.$areaname, 'gradingmethod', 'core_grading');
                     if (!$this->_features->rating) {
-                        $mform->disabledIf('advancedgradingmethod_'.$areaname, 'grade[modgrade_type]', 'eq', 'none');
+                        $mform->hideIf('advancedgradingmethod_'.$areaname, 'grade[modgrade_type]', 'eq', 'none');
                     }
 
                 } else {
@@ -875,7 +882,7 @@ abstract class moodleform_mod extends moodleform {
                         grade_get_categories_menu($COURSE->id, $this->_outcomesused));
                 $mform->addHelpButton('gradecat', 'gradecategoryonmodform', 'grades');
                 if (!$this->_features->rating) {
-                    $mform->disabledIf('gradecat', 'grade[modgrade_type]', 'eq', 'none');
+                    $mform->hideIf('gradecat', 'grade[modgrade_type]', 'eq', 'none');
                 }
             }
 
@@ -885,9 +892,9 @@ abstract class moodleform_mod extends moodleform {
             $mform->setDefault('gradepass', '');
             $mform->setType('gradepass', PARAM_RAW);
             if (!$this->_features->rating) {
-                $mform->disabledIf('gradepass', 'grade[modgrade_type]', 'eq', 'none');
+                $mform->hideIf('gradepass', 'grade[modgrade_type]', 'eq', 'none');
             } else {
-                $mform->disabledIf('gradepass', 'assessed', 'eq', '0');
+                $mform->hideIf('gradepass', 'assessed', 'eq', '0');
             }
         }
     }

@@ -38,8 +38,20 @@ if ($hassiteconfig or has_any_capability($capabilities, $systemcontext)) {
         )
     );
     $ADMIN->add('courses',
+        new admin_externalpage('course_customfield', new lang_string('course_customfield', 'admin'),
+            $CFG->wwwroot . '/course/customfield.php',
+            array('moodle/course:configurecustomfields')
+        )
+    );
+    $ADMIN->add('courses',
         new admin_externalpage('addcategory', new lang_string('addcategory', 'admin'),
             new moodle_url('/course/editcategory.php', array('parent' => 0)),
+            array('moodle/category:manage')
+        )
+    );
+    $ADMIN->add('courses',
+        new admin_externalpage('addnewcourse', new lang_string('addnewcourse'),
+            new moodle_url('/course/edit.php', array('category' => 0)),
             array('moodle/category:manage')
         )
     );
@@ -91,6 +103,9 @@ if ($hassiteconfig or has_any_capability($capabilities, $systemcontext)) {
     $choices[COURSE_DISPLAY_MULTIPAGE] = new lang_string('coursedisplay_multi');
     $temp->add(new admin_setting_configselect('moodlecourse/coursedisplay', new lang_string('coursedisplay'),
         new lang_string('coursedisplay_help'), COURSE_DISPLAY_SINGLEPAGE, $choices));
+
+    $temp->add(new admin_setting_configcheckbox('moodlecourse/courseenddateenabled', get_string('courseenddateenabled'),
+        get_string('courseenddateenabled_desc'), 1));
 
     $temp->add(new admin_setting_configduration('moodlecourse/courseduration', get_string('courseduration'),
         get_string('courseduration_desc'), YEARSECS));
@@ -145,7 +160,6 @@ if ($hassiteconfig or has_any_capability($capabilities, $systemcontext)) {
     $temp->add(new admin_setting_configselect('moodlecourse/groupmodeforce', new lang_string('force'), new lang_string('coursehelpforce'), 0,array(0 => new lang_string('no'), 1 => new lang_string('yes'))));
 
     $ADMIN->add('courses', $temp);
-
 
     // "courserequests" settingpage.
     $temp = new admin_settingpage('courserequest', new lang_string('courserequest'));

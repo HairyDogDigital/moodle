@@ -289,12 +289,9 @@ EOD;
      * Create a test course category
      * @param array|stdClass $record
      * @param array $options
-     * @return coursecat course category record
+     * @return core_course_category course category record
      */
     public function create_category($record=null, array $options=null) {
-        global $DB, $CFG;
-        require_once("$CFG->libdir/coursecatlib.php");
-
         $this->categorycount++;
         $i = $this->categorycount;
 
@@ -312,7 +309,7 @@ EOD;
             $record['idnumber'] = '';
         }
 
-        return coursecat::create($record);
+        return core_course_category::create($record);
     }
 
     /**
@@ -343,7 +340,7 @@ EOD;
         }
 
         if (!isset($record['description'])) {
-            $record['description'] = "Test cohort $i\n$this->loremipsum";
+            $record['description'] = "Description for '{$record['name']}' \n$this->loremipsum";
         }
 
         if (!isset($record['descriptionformat'])) {
@@ -415,6 +412,10 @@ EOD;
             $record['category'] = $DB->get_field_select('course_categories', "MIN(id)", "parent=0");
         }
 
+        if (!isset($record['startdate'])) {
+            $record['startdate'] = usergetmidnight(time());
+        }
+
         if (isset($record['tags']) && !is_array($record['tags'])) {
             $record['tags'] = preg_split('/\s*,\s*/', trim($record['tags']), -1, PREG_SPLIT_NO_EMPTY);
         }
@@ -423,6 +424,12 @@ EOD;
             // Since Moodle 3.3 function create_course() automatically creates sections if numsections is specified.
             // For BC if 'createsections' is given but 'numsections' is not, assume the default value from config.
             $record['numsections'] = get_config('moodlecourse', 'numsections');
+        }
+
+        if (!empty($record['customfields'])) {
+            foreach ($record['customfields'] as $field) {
+                $record['customfield_'.$field['shortname']] = $field['value'];
+            }
         }
 
         $course = create_course((object)$record);
@@ -540,6 +547,18 @@ EOD;
         }
 
         $id = groups_create_group((object)$record);
+
+        // Allow tests to set group pictures.
+        if (!empty($record['picturepath'])) {
+            require_once($CFG->dirroot . '/lib/gdlib.php');
+            $grouppicture = process_new_icon(\context_course::instance($record['courseid']), 'group', 'icon', $id,
+                $record['picturepath']);
+
+            $DB->set_field('groups', 'picture', $grouppicture, ['id' => $id]);
+
+            // Invalidate the group data as we've updated the group record.
+            cache_helper::invalidate_by_definition('core', 'groupdata', array(), [$record['courseid']]);
+        }
 
         return $DB->get_record('groups', array('id'=>$id));
     }
@@ -789,13 +808,13 @@ EOD;
 
         if ($record['archetype']) {
 
-            // We copy all the roles the archetype can assign, override and switch to.
+            // We copy all the roles the archetype can assign, override, switch to and view.
             if ($record['archetype']) {
-                $types = array('assign', 'override', 'switch');
+                $types = array('assign', 'override', 'switch', 'view');
                 foreach ($types as $type) {
                     $rolestocopy = get_default_role_archetype_allows($type, $record['archetype']);
                     foreach ($rolestocopy as $tocopy) {
-                        $functionname = 'allow_' . $type;
+                        $functionname = "core_role_set_{$type}_allowed";
                         $functionname($newroleid, $tocopy);
                     }
                 }
@@ -1102,5 +1121,106 @@ EOD;
 
         // Get the tool associated with this instance.
         return $DB->get_record('enrol_lti_tools', array('enrolid' => $instanceid));
+    }
+
+    /**
+     * Helper function used to create an event.
+     *
+     * @param   array   $data
+     * @return  stdClass
+     */
+    public function create_event($data = []) {
+        global $CFG;
+
+        require_once($CFG->dirroot . '/calendar/lib.php');
+        $record = new \stdClass();
+        $record->name = 'event name';
+        $record->eventtype = 'global';
+        $record->repeat = 0;
+        $record->repeats = 0;
+        $record->timestart = time();
+        $record->timeduration = 0;
+        $record->timesort = 0;
+        $record->eventtype = 'user';
+        $record->courseid = 0;
+        $record->categoryid = 0;
+
+        foreach ($data as $key => $value) {
+            $record->$key = $value;
+        }
+
+        switch ($record->eventtype) {
+            case 'user':
+                unset($record->categoryid);
+                unset($record->courseid);
+                unset($record->groupid);
+                break;
+            case 'group':
+                unset($record->categoryid);
+                break;
+            case 'course':
+                unset($record->categoryid);
+                unset($record->groupid);
+                break;
+            case 'category':
+                unset($record->courseid);
+                unset($record->groupid);
+                break;
+            case 'global':
+                unset($record->categoryid);
+                unset($record->courseid);
+                unset($record->groupid);
+                break;
+        }
+
+        $event = new calendar_event($record);
+        $event->create($record);
+
+        return $event->properties();
+    }
+
+    /**
+     * Create a new course custom field category with the given name.
+     *
+     * @param   array $data Array with data['name'] of category
+     * @return  \core_customfield\category_controller   The created category
+     */
+    public function create_custom_field_category($data) : \core_customfield\category_controller {
+        return $this->get_plugin_generator('core_customfield')->create_category($data);
+    }
+
+    /**
+     * Create a new custom field
+     *
+     * @param   array $data Array with 'name', 'shortname' and 'type' of the field
+     * @return  \core_customfield\field_controller   The created field
+     */
+    public function create_custom_field($data) : \core_customfield\field_controller {
+        global $DB;
+        if (empty($data['categoryid']) && !empty($data['category'])) {
+            $data['categoryid'] = $DB->get_field('customfield_category', 'id', ['name' => $data['category']]);
+            unset($data['category']);
+        }
+        return $this->get_plugin_generator('core_customfield')->create_field($data);
+    }
+
+    /**
+     * Create a new user, and enrol them in the specified course as the supplied role.
+     *
+     * @param   \stdClass   $course The course to enrol in
+     * @param   string      $role The role to give within the course
+     * @param   \stdClass   $userparams User parameters
+     * @return  \stdClass   The created user
+     */
+    public function create_and_enrol($course, $role = 'student', $userparams = null, $enrol = 'manual',
+            $timestart = 0, $timeend = 0, $status = null) {
+        global $DB;
+
+        $user = $this->create_user($userparams);
+        $roleid = $DB->get_field('role', 'id', ['shortname' => $role ]);
+
+        $this->enrol_user($user->id, $course->id, $roleid, $enrol, $timestart, $timeend, $status);
+
+        return $user;
     }
 }

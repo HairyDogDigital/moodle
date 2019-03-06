@@ -25,7 +25,7 @@
 $string['addmorechoiceblanks'] = 'Blanks for {no} more choices';
 $string['answer'] = 'Answer';
 $string['choices'] = 'Choices';
-$string['choicex'] = 'Choice {no}';
+$string['choicex'] = 'Choice [[{no}]]';
 $string['combinedcontrolnamegapselect'] = 'drop down box';
 $string['combinedcontrolnamegapselectplural'] = 'drop down boxes';
 $string['correctansweris'] = 'The correct answer is: {$a}';
@@ -41,6 +41,7 @@ $string['pluginname_link'] = 'question/type/gapselect';
 $string['pluginnameadding'] = 'Adding a select missing words question';
 $string['pluginnameediting'] = 'Editing a select missing words question';
 $string['pluginnamesummary'] = 'Missing words in the question text are filled in using dropdown menus.';
+$string['privacy:metadata'] = 'The Select missing words plugin does not store any personal data.';
 $string['shuffle'] = 'Shuffle';
 $string['tagsnotallowed'] = '{$a->tag} is not allowed. (Only {$a->allowed} are permitted.)';
 $string['tagsnotallowedatall'] = '{$a->tag} is not allowed. (No HTML is allowed here.)';

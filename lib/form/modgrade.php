@@ -199,11 +199,13 @@ class MoodleQuickForm_modgrade extends MoodleQuickForm_group {
             // Set a message so the user knows why they can not alter the grade type or scale.
             if ($this->currentgradetype == 'scale') {
                 $gradesexistmsg = get_string('modgradecantchangegradetyporscalemsg', 'grades');
-            } else {
+            } else if ($this->canrescale) {
                 $gradesexistmsg = get_string('modgradecantchangegradetypemsg', 'grades');
+            } else {
+                $gradesexistmsg = get_string('modgradecantchangegradetype', 'grades');
             }
 
-            $gradesexisthtml = '<div class=\'alert\'>' . $gradesexistmsg . '</div>';
+            $gradesexisthtml = '<div class=\'alert alert-warning\'>' . $gradesexistmsg . '</div>';
             $this->_elements[] = $this->createFormElement('static', 'gradesexistmsg', '', $gradesexisthtml);
         }
 
@@ -347,9 +349,9 @@ class MoodleQuickForm_modgrade extends MoodleQuickForm_group {
                 $name = $arg[0];
 
                 // Set disable actions.
-                $caller->disabledIf($name.'[modgrade_scale]', $name.'[modgrade_type]', 'neq', 'scale');
-                $caller->disabledIf($name.'[modgrade_point]', $name.'[modgrade_type]', 'neq', 'point');
-                $caller->disabledIf($name.'[modgrade_rescalegrades]', $name.'[modgrade_type]', 'neq', 'point');
+                $caller->hideIf($name.'[modgrade_scale]', $name.'[modgrade_type]', 'neq', 'scale');
+                $caller->hideIf($name.'[modgrade_point]', $name.'[modgrade_type]', 'neq', 'point');
+                $caller->hideIf($name.'[modgrade_rescalegrades]', $name.'[modgrade_type]', 'neq', 'point');
 
                 // Set validation rules for the sub-elements belonging to this element.
                 // A handy note: the parent scope of a closure is the function in which the closure was declared.

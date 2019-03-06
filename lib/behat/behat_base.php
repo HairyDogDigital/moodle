@@ -28,9 +28,11 @@
 
 // NOTE: no MOODLE_INTERNAL test here, this file may be required by behat before including /config.php.
 
-use Behat\Mink\Exception\ExpectationException as ExpectationException,
-    Behat\Mink\Exception\ElementNotFoundException as ElementNotFoundException,
-    Behat\Mink\Element\NodeElement as NodeElement;
+use Behat\Mink\Exception\DriverException;
+use Behat\Mink\Exception\ExpectationException;
+use Behat\Mink\Exception\ElementNotFoundException;
+use Behat\Mink\Element\NodeElement;
+use Behat\Mink\Session;
 
 /**
  * Steps definitions base class.
@@ -335,8 +337,6 @@ class behat_base extends Behat\MinkExtension\Context\RawMinkContext {
                 if (!$exception) {
                     $exception = $e;
                 }
-                // We wait until no exception is thrown or timeout expires.
-                continue;
             }
 
             if ($this->running_javascript()) {
@@ -472,6 +472,21 @@ class behat_base extends Behat\MinkExtension\Context\RawMinkContext {
      */
     protected function running_javascript() {
         return get_class($this->getSession()->getDriver()) !== 'Behat\Mink\Driver\GoutteDriver';
+    }
+
+    /**
+     * Checks if the current page is part of the mobile app.
+     *
+     * @return bool True if it's in the app
+     */
+    protected function is_in_app() : bool {
+        // Cannot be in the app if there's no @app tag on scenario.
+        if (!$this->has_tag('app')) {
+            return false;
+        }
+
+        // Check on page to see if it's an app page. Safest way is to look for added JavaScript.
+        return $this->getSession()->evaluateScript('typeof window.behat') === 'object';
     }
 
     /**
@@ -648,6 +663,16 @@ class behat_base extends Behat\MinkExtension\Context\RawMinkContext {
     }
 
     /**
+     * Checks if the current scenario, or its feature, has a specified tag.
+     *
+     * @param string $tag Tag to check
+     * @return bool True if the tag exists in scenario or feature
+     */
+    public function has_tag(string $tag) : bool {
+        return array_key_exists($tag, behat_hooks::get_tags_for_scenario());
+    }
+
+    /**
      * Change browser window size.
      *   - small: 640x480
      *   - medium: 1024x768
@@ -710,24 +735,31 @@ class behat_base extends Behat\MinkExtension\Context\RawMinkContext {
     /**
      * Waits for all the JS to be loaded.
      *
-     * @throws \Exception
-     * @throws NoSuchWindow
-     * @throws UnknownError
-     * @return bool True or false depending whether all the JS is loaded or not.
+     * @return  bool Whether any JS is still pending completion.
      */
     public function wait_for_pending_js() {
-        // Waiting for JS is only valid for JS scenarios.
         if (!$this->running_javascript()) {
-            return;
+            // JS is not available therefore there is nothing to wait for.
+            return false;
         }
 
+        return static::wait_for_pending_js_in_session($this->getSession());
+    }
+
+    /**
+     * Waits for all the JS to be loaded.
+     *
+     * @param   Session $session The Mink Session where JS can be run
+     * @return  bool Whether any JS is still pending completion.
+     */
+    public static function wait_for_pending_js_in_session(Session $session) {
         // We don't use behat_base::spin() here as we don't want to end up with an exception
         // if the page & JSs don't finish loading properly.
         for ($i = 0; $i < self::EXTENDED_TIMEOUT * 10; $i++) {
             $pending = '';
             try {
-                $jscode = '
-                    return function() {
+                $jscode = trim(preg_replace('/\s+/', ' ', '
+                    return (function() {
                         if (typeof M === "undefined") {
                             if (document.readyState === "complete") {
                                 return "";
@@ -741,8 +773,8 @@ class behat_base extends Behat\MinkExtension\Context\RawMinkContext {
                         } else {
                             return "incomplete"
                         }
-                    }();';
-                $pending = $this->getSession()->evaluateScript($jscode);
+                    }());'));
+                $pending = $session->evaluateScript($jscode);
             } catch (NoSuchWindow $nsw) {
                 // We catch an exception here, in case we just closed the window we were interacting with.
                 // No javascript is running if there is no window right?
@@ -763,7 +795,7 @@ class behat_base extends Behat\MinkExtension\Context\RawMinkContext {
             usleep(100000);
         }
 
-        // Timeout waiting for JS to complete. It will be catched and forwarded to behat_hooks::i_look_for_exceptions().
+        // Timeout waiting for JS to complete. It will be caught and forwarded to behat_hooks::i_look_for_exceptions().
         // It is unlikely that Javascript code of a page or an AJAX request needs more than self::EXTENDED_TIMEOUT seconds
         // to be loaded, although when pages contains Javascript errors M.util.js_complete() can not be executed, so the
         // number of JS pending code and JS completed code will not match and we will reach this point.
@@ -883,6 +915,8 @@ class behat_base extends Behat\MinkExtension\Context\RawMinkContext {
 
         } catch (NoSuchWindow $e) {
             // If we were interacting with a popup window it will not exists after closing it.
+        } catch (DriverException $e) {
+            // Same reason as above.
         }
     }
 
@@ -946,6 +980,34 @@ class behat_base extends Behat\MinkExtension\Context\RawMinkContext {
     }
 
     /**
+     * Set current $USER, reset access cache.
+     *
+     * In some cases, behat will execute the code as admin but in many cases we need to set an specific user as some
+     * API's might rely on the logged user to take some action.
+     *
+     * @param null|int|stdClass $user user record, null or 0 means non-logged-in, positive integer means userid
+     */
+    public static function set_user($user = null) {
+        global $DB;
+
+        if (is_object($user)) {
+            $user = clone($user);
+        } else if (!$user) {
+            // Assign valid data to admin user (some generator-related code needs a valid user).
+            $user = $DB->get_record('user', array('username' => 'admin'));
+        } else {
+            $user = $DB->get_record('user', array('id' => $user));
+        }
+        unset($user->description);
+        unset($user->access);
+        unset($user->preference);
+
+        // Ensure session is empty, as it may contain caches and user specific info.
+        \core\session\manager::init_empty_session();
+
+        \core\session\manager::set_user($user);
+    }
+    /**
      * Trigger click on node via javascript instead of actually clicking on it via pointer.
      *
      * This function resolves the issue of nested elements with click listeners or links - in these cases clicking via
@@ -959,7 +1021,12 @@ class behat_base extends Behat\MinkExtension\Context\RawMinkContext {
         }
         $this->ensure_node_is_visible($node); // Ensures hidden elements can't be clicked.
         $xpath = $node->getXpath();
-        $script = "Syn.click({{ELEMENT}})";
-        $this->getSession()->getDriver()->triggerSynScript($xpath, $script);
+        $driver = $this->getSession()->getDriver();
+        if ($driver instanceof \Moodle\BehatExtension\Driver\MoodleSelenium2Driver) {
+            $script = "Syn.click({{ELEMENT}})";
+            $driver->triggerSynScript($xpath, $script);
+        } else {
+            $driver->click($xpath);
+        }
     }
 }
